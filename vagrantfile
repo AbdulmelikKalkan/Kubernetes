@@ -1,0 +1,109 @@
+#Variables
+IMAGE_NAME = "centos/7"
+MASTER_COUNT = 2
+NODE_COUNT = 2
+
+Vagrant.configure("2") do |config|
+    config.ssh.insert_key = false
+    config.vm.provider "virtualbox" do |v|
+        v.memory = 2048
+        v.cpus = 2
+    end
+    config.vm.synced_folder "kubernetes-setup/rsa", "/vagrant", type: "rsync",
+      rsync__exclude: ".git/"
+    config.vm.define "loadbalancer" do |loadbalancer|
+        loadbalancer.vm.box = IMAGE_NAME
+        loadbalancer.vm.network "private_network", ip: "192.168.50.100"
+        loadbalancer.vm.hostname = "loadbalancer"
+        loadbalancer.vm.provider "virtualbox" do |v|
+            v.name = "loadbalancer"
+        end
+        loadbalancer.vm.synced_folder "kubernetes-setup/nginx", "/etc/nginx", type: "rsync",
+          rsync__exclude: ".git/"
+        loadbalancer.vm.provision "shell", inline: "sudo cat /vagrant/id_rsa.pub >> /home/vagrant/.ssh/authorized_keys"
+        (1..MASTER_COUNT).each do |i|
+          loadbalancer.vm.provision "shell",
+            inline: "echo '192.168.50.#{i + 9}  k8s-master-#{i}' >> /etc/hosts"
+            loadbalancer.vm.provision "shell", inline: "sudo sed -i -e '#{i + 5}i server 192.168.50.#{i + 9}:6443 max_fails=0 fail_timeout=50s;' /etc/nginx/nginx.conf"
+        end
+        (1..NODE_COUNT).each do |i|
+          loadbalancer.vm.provision "shell",
+            inline: "echo '192.168.50.#{i + MASTER_COUNT + 9}  node-#{i}' >> /etc/hosts"
+        end
+        loadbalancer.vm.provision "shell", inline: "echo '192.168.50.100  loadbalancer' >> /etc/hosts"
+        loadbalancer.vm.provision "shell", path: "kubernetes-setup/loadbalancer.sh"
+        loadbalancer.vm.provision "shell", inline: "sudo su - && sed -i -e 's+PasswordAuthentication no+PasswordAuthentication yes+g' /etc/ssh/sshd_config"
+        loadbalancer.vm.provision "shell", inline: "sudo su - && systemctl restart sshd"
+    end
+
+    (1..MASTER_COUNT).each do |i|
+      config.vm.define "k8s-master-#{i}" do |master|
+          master.vm.box = IMAGE_NAME
+          master.vm.network "private_network", ip: "192.168.50.#{i + 9}"
+          master.vm.hostname = "k8s-master-#{i}"
+          master.vm.provider "virtualbox" do |v|
+              v.name = "k8s-master-#{i}"
+          end
+          master.vm.provision "shell", inline: "sudo cat /vagrant/id_rsa.pub >> /home/vagrant/.ssh/authorized_keys"
+          (1..MASTER_COUNT).each do |i|
+            master.vm.provision "shell",
+              inline: "echo '192.168.50.#{i + 9}  k8s-master-#{i}' >> /etc/hosts"
+          end
+          (1..NODE_COUNT).each do |i|
+            master.vm.provision "shell",
+              inline: "echo '192.168.50.#{i + MASTER_COUNT + 9}  node-#{i}' >> /etc/hosts"
+          end
+          master.vm.provision "shell", inline: "echo '192.168.50.100  loadbalancer' >> /etc/hosts"
+          master.vm.provision "shell", inline: "sudo su - && sed -i -e 's+PasswordAuthentication no+PasswordAuthentication yes+g' /etc/ssh/sshd_config"
+          master.vm.provision "shell", inline: "sudo su - && systemctl restart sshd"
+          master.vm.provision "shell", path: "kubernetes-setup/kubernetes.sh"
+          if "#{i}" == "1"
+            master.vm.provision "shell", inline: "sudo cp /vagrant/* /home/vagrant/.ssh/"
+            master.vm.provision "shell", path: "kubernetes-setup/master.sh"
+          end
+          if "#{i}" != "1"
+            master.vm.provision "shell", path: "kubernetes-setup/cluster-master.sh"
+          end
+          #master.vm.provision "ansible" do |ansible|
+          #    ansible.playbook = "kubernetes-setup/master-playbook.yml"
+          #    ansible.extra_vars = {
+          #        node_ip: "192.168.50.10",
+          #    }
+          #end
+      end
+    end
+
+    (1..NODE_COUNT).each do |i|
+        config.vm.define "node-#{i}" do |node|
+            node.vm.box = IMAGE_NAME
+            node.vm.network "private_network", ip: "192.168.50.#{i + MASTER_COUNT + 9}"
+            node.vm.hostname = "node-#{i}"
+            node.vm.provider "virtualbox" do |v|
+                v.name = "node-#{i}"
+            end
+            node.vm.provision "shell", inline: "sudo cat /vagrant/id_rsa.pub >> /home/vagrant/.ssh/authorized_keys"
+            (1..MASTER_COUNT).each do |i|
+              node.vm.provision "shell",
+                inline: "echo '192.168.50.#{i + 9}  k8s-master-#{i}' >> /etc/hosts"
+            end
+            (1..NODE_COUNT).each do |i|
+              node.vm.provision "shell",
+                inline: "echo '192.168.50.#{i + MASTER_COUNT + 9}  node-#{i}' >> /etc/hosts"
+            end
+            node.vm.provision "shell", inline: "echo '192.168.50.100  loadbalancer' >> /etc/hosts"
+            node.vm.provision "shell", inline: "sudo su - && sed -i -e 's+PasswordAuthentication no+PasswordAuthentication yes+g' /etc/ssh/sshd_config"
+            node.vm.provision "shell", inline: "sudo su - && systemctl restart sshd"
+            node.vm.provision "shell", path: "kubernetes-setup/kubernetes.sh"
+            node.vm.provision "shell", path: "kubernetes-setup/node.sh"
+            #node.vm.provision "ansible" do |ansible|
+            #    ansible.playbook = "kubernetes-setup/node-playbook.yml"
+            #    ansible.extra_vars = {
+            #        node_ip: "192.168.50.#{i + 10}",
+            #    }
+            #end
+        end
+    end
+
+
+
+end

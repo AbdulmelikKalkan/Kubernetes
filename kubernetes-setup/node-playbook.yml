@@ -1,0 +1,92 @@
+---
+- hosts: all
+  become: true
+  tasks:
+  - name: remove the docker package
+    yum:
+      name: "{{ packages }}"
+      state: absent
+    vars:
+      packages:
+      - docker
+      - docker-client
+      - docker-client-latest
+      - docker-common
+      - docker-latest
+      - docker-latest-logrotate
+      - docker-logrotate
+      - docker-engine
+  - name: Install a list of packages that yum-utils device-mapper-persistent-data and lvm2
+    yum:
+      name:
+        - yum-utils
+        - device-mapper-persistent-data
+        - lvm2
+      state: present
+  - name: Add docker repository
+    yum_repository:
+      name: docker
+      description: Docker YUM repo
+      baseurl: https://download.docker.com/linux/centos/docker-ce.repo
+  - name: Install a list of packages that docker-ce docker-ce-cli containerd.io
+    yum:
+      name:
+        - docker-ce
+        - docker-ce-cli
+        - containerd.io
+      state: present
+  - name: Enable service docker, and not touch the state
+    service:
+      name: docker
+      enabled: yes
+  - name: Start service docker, if not started
+    service:
+      name: docker
+      state: started
+  - name: Add vagrant user to docker group
+    user:
+      name: vagrant
+      group: docker
+  - name: Disable SELinux
+    selinux:
+      state: disabled
+  - name: Commenting Swap entries in /etc/fstab
+    replace:
+      path: /etc/fstab
+      regexp: '(.*swap*)'
+      replace: '#\1'
+  - name: Disabling Swap on all nodes
+    shell: swapoff -a
+  - name: Creating a repository file for Kubernetes
+    file:
+      path: /etc/yum.repos.d/kubernetes.repo
+      state: touch
+  - name: Adding repository details in Kubernetes repo file.
+    blockinfile:
+      path: /etc/yum.repos.d/kubernetes.repo
+      block: |
+       [kubernetes]
+       name=Kubernetes
+       baseurl=https://packages.cloud.google.com/yum/repos/kubernetes-el7-x86_64
+       enabled=1
+       gpgcheck=1
+       repo_gpgcheck=1
+       gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg
+        https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+  - name: Install a list of packages that kubelet kubeadm kubectl
+    yum:
+      name:
+        - kubeadm
+      state: present
+  - name: Enable service kubelet, and not touch the state
+    service:
+      name: kubelet
+      enabled: yes
+  - name: Start service kubelet, if not started
+    service:
+      name: kubelet
+      state: started
+  - name: Copy the join command to server location
+    copy: src=join-command dest=./join-command.sh mode=0777
+  - name: Join the node to cluster
+    command: sh ./join-command.sh
