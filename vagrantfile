@@ -1,0 +1,63 @@
+# This is belongs to Abdulmelik
+#Variables
+IMAGE_NAME = "generic/centos9s"
+provider="hyperv" #virtualbox
+
+kubernetesip = "192.168.1.210"
+kubernetesaddress = "kubernetes.quasys.local"
+
+
+
+
+#NETWORK
+$bridge = [
+    "Intel(R) Ethernet Connection I219-LM",
+    "Intel(R) Centrino(R) Wireless-N 100",
+    "Intel(R) Dual Band Wireless-AC 8260",
+    "PANGP Virtual Ethernet Adapter",
+    "enp0s31f6",
+    "enp2s0",
+    "enp61s0",
+    "en1: Wi-Fi (AirPort)"
+  ]
+
+
+Vagrant.configure("2") do |config|
+    config.ssh.insert_key = false
+    if Vagrant.has_plugin?("vagrant-vbguest") then
+        config.vbguest.auto_update = false
+    end
+    config.vm.provider "#{provider}" do |v|
+        v.maxmemory = 2048
+        v.cpus = 2
+    end
+    config.vm.define "kubernetes" do |kubernetes|
+        kubernetes.vm.box = IMAGE_NAME
+        kubernetes.vm.network "private_network", ip: "#{kubernetesip}"
+        # kubernetes.vm.network "forwarded_port", guest: 6443, host: 6443, protocol: "tcp", auto_correct: true
+        kubernetes.vm.hostname = "#{kubernetesaddress}"
+        kubernetes.vm.provider "#{provider}" do |v|
+        #   v.customize ['modifyvm', :id, '--nested-hw-virt', 'on']
+          v.vmname = "kubernetes"
+          v.maxmemory = 12000
+          v.cpus = 4
+        end
+        kubernetes.vm.synced_folder ".", "/data", type: "rsync",
+            rsync__exclude: [ ".git/", ".editorconfig", ".vagrant", "Vagrantfile", "README.md" ]
+        kubernetes.vm.provision "shell", inline: <<-SHELL
+            sudo yum install -y git
+            sudo swapoff -a
+            sudo su - && sed -i -e 's+#PubkeyAuthentication yes+PubkeyAuthentication yes+g' /etc/ssh/sshd_config
+            sudo su - && sed -i -e 's+PasswordAuthentication no+PasswordAuthentication yes+g' /etc/ssh/sshd_config
+            sudo echo "#{kubernetesip} #{kubernetesaddress}" >> /etc/hosts
+            sudo systemctl restart sshd
+            sudo nmcli con show
+            sudo nmcli con modify eth0 ipv4.addresses "#{kubernetesip}"/24
+            sudo nmcli con modify eth0 ipv4.gateway 192.168.1.1
+            sudo nmcli con modify eth0 ipv4.dns "8.8.8.8"
+            sudo nmcli con modify eth0 ipv4.method manual
+            sudo nmcli con up eth0 &
+        SHELL
+        kubernetes.vm.provision "shell", path: "/setup.sh"
+    end
+end
