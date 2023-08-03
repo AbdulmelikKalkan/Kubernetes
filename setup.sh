@@ -43,10 +43,30 @@ export KUBECONFIG=/etc/kubernetes/admin.conf
 sudo kubectl taint nodes --all node-role.kubernetes.io/control-plane-
 sudo kubectl apply -f https://raw.githubusercontent.com/flannel-io/flannel/master/Documentation/kube-flannel.yml
 
-sudo kubectl apply -f /data/dashboard.yml
-sudo kubectl apply -f /data/dashboard-serviceaccount.yml
+#Wait until cni0 up and runing
+ret=1
+until [ $ret -eq 0 ]
+do
+    echo "Waiting cni0 up and running..."
+    ip address | grep -q cni0
+    ret=$?
+    sleep 1
+done
 
-sleep 5
+#Wait until flannel.1 up and runing
+ret=1
+until [ $ret -eq 0 ]
+do
+    echo "Waiting flannel.1 up and running..."
+    ip address | grep -q flannel.1
+    ret=$?
+    sleep 1
+done
+
+
 sudo ip link set cni0 down && sudo ip link set flannel.1 down 
 sudo ip link delete cni0 && sudo ip link delete flannel.1
 sudo systemctl restart containerd && sudo systemctl restart kubelet
+sleep 10
+sudo kubectl apply -f /data/dashboard.yml
+sudo kubectl apply -f /data/dashboard-serviceaccount.yml
