@@ -31,7 +31,7 @@ OS=CentOS_9_Stream
 VERSION=1.25
 sudo curl -L -o /etc/yum.repos.d/devel:kubic:libcontainers:stable.repo https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/$OS/devel:kubic:libcontainers:stable.repo
 sudo curl -L -o /etc/yum.repos.d/devel:kubic:libcontainers:stable:cri-o:$VERSION.repo https://download.opensuse.org/repositories/devel:kubic:libcontainers:stable:cri-o:$VERSION/$OS/devel:kubic:libcontainers:stable:cri-o:$VERSION.repo
-sudo yum install cri-o
+sudo yum install -y cri-o
 sudo systemctl enable --now crio
 
 sudo kubeadm init --apiserver-advertise-address=192.168.1.210 --pod-network-cidr 10.244.0.0/16 --cri-socket=unix:///var/run/crio/crio.sock
