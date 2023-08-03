@@ -40,12 +40,13 @@ sudo sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
 sudo chown $(id -u):$(id -g) $HOME/.kube/config
 export KUBECONFIG=/etc/kubernetes/admin.conf
 
-sudo ip link set cni0 down && sudo ip link set flannel.1 down 
-sudo ip link delete cni0 && sudo ip link delete flannel.1
-sudo systemctl restart containerd && sudo systemctl restart kubelet
-
 sudo kubectl taint nodes --all node-role.kubernetes.io/control-plane-
 sudo kubectl apply -f https://raw.githubusercontent.com/flannel-io/flannel/master/Documentation/kube-flannel.yml
 
 sudo kubectl apply -f /data/dashboard.yml
 sudo kubectl apply -f /data/dashboard-serviceaccount.yml
+
+sleep 5
+sudo ip link set cni0 down && sudo ip link set flannel.1 down 
+sudo ip link delete cni0 && sudo ip link delete flannel.1
+sudo systemctl restart containerd && sudo systemctl restart kubelet
